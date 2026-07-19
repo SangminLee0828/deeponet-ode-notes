@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>미분방정식과 DeepONet — 학습 노트</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '\\[', right: '\\]', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\(', right: '\\)', display: false}
+      ]
+    });"></script>
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5a6578;
+      --faint: #8b95a8;
+      --paper: #f7f4ef;
+      --panel: #ffffff;
+      --line: #d9d2c5;
+      --accent: #0b6e4f;
+      --accent-soft: #e6f2ed;
+      --warn-bg: #f3eee6;
+      --code-bg: #eef1f5;
+      --shadow: 0 1px 0 rgba(26, 35, 50, 0.04);
+      --max: 42rem;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "IBM Plex Sans KR", system-ui, sans-serif;
+      font-size: 17px;
+      line-height: 1.7;
+      background:
+        radial-gradient(ellipse 80% 50% at 10% 0%, #e8f0ea 0%, transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 20%, #e7ebf3 0%, transparent 50%),
+        var(--paper);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 14rem minmax(0, var(--max));
+      gap: 2.5rem;
+      justify-content: center;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+        padding-top: 1.25rem;
+      }
+      nav.toc { position: static; }
+    }
+
+    nav.toc {
+      position: sticky;
+      top: 1.5rem;
+      align-self: start;
+      font-size: 0.88rem;
+    }
+
+    nav.toc .label {
+      color: var(--faint);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      margin-bottom: 0.75rem;
+    }
+
+    nav.toc a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 0.28rem 0;
+      border-left: 2px solid transparent;
+      padding-left: 0.7rem;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    nav.toc a:hover {
+      color: var(--accent);
+      border-left-color: var(--accent);
+    }
+
+    main { min-width: 0; }
+
+    header.page {
+      margin-bottom: 2.25rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+      margin: 0 0 0.5rem;
+    }
+
+    h1 {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-size: clamp(1.85rem, 4vw, 2.35rem);
+      font-weight: 600;
+      line-height: 1.25;
+      margin: 0 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    .lede {
+      color: var(--muted);
+      margin: 0;
+      max-width: 36rem;
+    }
+
+    h2 {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-size: 1.45rem;
+      font-weight: 600;
+      margin: 2.75rem 0 1rem;
+      letter-spacing: -0.015em;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 1.75rem 0 0.6rem;
+      color: var(--ink);
+    }
+
+    p { margin: 0 0 1rem; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1.15rem 1.25rem;
+      margin: 1rem 0 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .panel.accent {
+      background: var(--accent-soft);
+      border-color: #b7d4c6;
+    }
+
+    .panel.warn {
+      background: var(--warn-bg);
+      border-color: #ddd2bf;
+    }
+
+    .panel .caption {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.65rem;
+    }
+
+    .katex-display {
+      margin: 0.85rem 0 !important;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    ol.steps {
+      margin: 0.5rem 0 1.25rem;
+      padding-left: 1.25rem;
+    }
+
+    ol.steps li {
+      margin-bottom: 0.85rem;
+      padding-left: 0.25rem;
+    }
+
+    ol.steps li::marker {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    table.compare {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 1rem 0 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    table.compare th,
+    table.compare td {
+      text-align: left;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    table.compare th {
+      background: #f0ebe3;
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    table.compare tr:last-child td { border-bottom: none; }
+
+    code, .mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 0.5rem;
+      align-items: stretch;
+      margin: 1rem 0;
+    }
+
+    @media (max-width: 640px) {
+      .flow {
+        grid-template-columns: 1fr;
+      }
+      .flow .arrow { transform: rotate(90deg); justify-self: center; }
+    }
+
+    .flow .box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.85rem 0.9rem;
+    }
+
+    .flow .box .small {
+      font-size: 0.75rem;
+      color: var(--faint);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.25rem;
+    }
+
+    .flow .box strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .flow .arrow {
+      color: var(--faint);
+      display: flex;
+      align-items: center;
+      font-size: 1.25rem;
+    }
+
+    ul.clean {
+      margin: 0.25rem 0 1rem;
+      padding-left: 1.2rem;
+    }
+
+    ul.clean li { margin-bottom: 0.4rem; }
+
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav class="toc" aria-label="목차">
+      <div class="label">목차</div>
+      <a href="#ode">1. 초기값 문제</a>
+      <a href="#example">2. 공업수학 예제</a>
+      <a href="#dummy">3. 왜 $s$로 바꾸나</a>
+      <a href="#deeponet">4. DeepONet 적용</a>
+      <a href="#notation">5. $G(u)(y)$ 표기</a>
+      <a href="#hat">6. $\hat{G}$ 표기</a>
+      <a href="#summary">7. 한눈에 정리</a>
+    </nav>
+
+    <main>
+      <header class="page">
+        <p class="eyebrow">학습 노트 · ODE → Operator Learning</p>
+        <h1>미분방정식과 DeepONet</h1>
+        <p class="lede">
+          적분형 초기값 문제부터 DeepONet의 입출력·연산자 표기까지,
+          대화에서 다룬 핵심만 수식과 함께 정리한 노트입니다.
+        </p>
+      </header>
+
+      <section id="ode">
+        <h2>1. 초기값 문제</h2>
+        <p>다음 1계 미분방정식(초기값 문제)을 생각합니다.</p>
+        <div class="panel">
+          <div class="caption">문제</div>
+          \[
+            \frac{dv}{dx} = u(x), \quad x \in [0,1], \quad v(0)=0
+          \]
+        </div>
+        <p>양변을 $0$부터 $x$까지 적분하면</p>
+        \[
+          \int_0^x \frac{dv}{ds}\,ds = \int_0^x u(s)\,ds
+        \]
+        <p>왼쪽은 $v(x)-v(0)$이고 $v(0)=0$이므로 해는</p>
+        <div class="panel accent">
+          <div class="caption">해</div>
+          \[
+            v(x) = \int_0^x u(s)\,ds
+          \]
+        </div>
+        <p>
+          즉 이 문제의 해 연산자는 <strong>적분 연산자</strong>입니다.
+          $u$가 적분 가능하면 이 해는 유일합니다.
+        </p>
+      </section>
+
+      <section id="example">
+        <h2>2. 공업수학 예제</h2>
+        <div class="panel">
+          <div class="caption">예제 1</div>
+          <p style="margin:0 0 0.5rem">다음 초기값 문제를 풀어라.</p>
+          \[
+            \frac{dv}{dx} = 2x, \quad 0 \le x \le 1, \quad v(0)=0
+          \]
+          <p style="margin:0; color: var(--muted); font-size: 0.92rem;">
+            (일반형에서 $u(x)=2x$인 경우)
+          </p>
+        </div>
+
+        <h3>풀이</h3>
+        <ol class="steps">
+          <li>
+            <strong>양변을 $0$부터 $x$까지 적분</strong>
+            \[
+              \int_0^x \frac{dv}{ds}\,ds = \int_0^x 2s\,ds
+            \]
+          </li>
+          <li>
+            <strong>왼쪽은 초기조건으로 정리</strong><br />
+            왼쪽 $= v(x)-v(0)=v(x)$
+          </li>
+          <li>
+            <strong>오른쪽 적분</strong>
+            \[
+              v(x) = \big[s^2\big]_0^x = x^2
+            \]
+          </li>
+        </ol>
+
+        <div class="panel accent">
+          <div class="caption">답</div>
+          \[
+            v(x) = x^2
+          \]
+        </div>
+
+        <h3>검산</h3>
+        <ul class="clean">
+          <li>미분: $v'(x)=2x$ → 미분방정식 만족</li>
+          <li>초기조건: $v(0)=0$ → 만족</li>
+        </ul>
+      </section>
+
+      <section id="dummy">
+        <h2>3. 왜 $\frac{dv}{dx}$가 $\frac{dv}{ds}$가 되나?</h2>
+        <div class="panel accent">
+          <strong>한 줄 요약:</strong> 식이 바뀐 것이 아니라,
+          적분할 때 쓰는 <em>변수 이름만</em> 바꾼 것입니다.
+        </div>
+        <p>
+          위끝(도착점)을 이미 $x$로 쓰고 있는데, 적분 변수까지 같은 글자 $x$를 쓰면
+        </p>
+        <div class="panel warn">
+          <div class="caption">표기상 혼란스러움</div>
+          \[
+            \int_0^x \frac{dv}{dx}\,dx
+          \]
+          <p style="margin:0; color: var(--muted); font-size: 0.92rem;">
+            위끝의 $x$(고정)와 $dx$의 $x$(움직임)가 같은 글자라 헷갈림
+          </p>
+        </div>
+        <p>그래서 움직이는 변수만 $s$로 바꿉니다.</p>
+        \[
+          \int_0^x \frac{dv}{ds}\,ds = \int_0^x 2s\,ds
+        \]
+        <ul class="clean">
+          <li><strong>$x$</strong> — 답을 구하는 최종 위치 (고정)</li>
+          <li><strong>$s$</strong> — $0$에서 $x$까지 따라가는 중간 점 (움직임)</li>
+          <li><strong>$ds$</strong> — 그 중간 점을 따라 조금 이동</li>
+        </ul>
+        <p>
+          $\frac{dv}{ds}=2s$는 “점 $s$에서의 기울기가 $2s$”라는 뜻이고,
+          원래 $\frac{dv}{dx}=2x$와 같은 법칙입니다. $t$, $\tau$ 등 아무 글자나 써도 됩니다.
+        </p>
+      </section>
+
+      <section id="deeponet">
+        <h2>4. DeepONet을 이 문제에 적용하면</h2>
+        <p>
+          DeepONet은 <strong>함수 → 함수</strong> 연산자 $G$를 학습합니다.
+          이 문제에서 $G$는 적분입니다.
+        </p>
+        \[
+          v(y) = G(u)(y) = \int_0^y u(s)\,ds
+        \]
+
+        <h3>입출력</h3>
+        <div class="flow">
+          <div class="box">
+            <div class="small">Branch 입력</div>
+            <strong>$u(x)$</strong><br />
+            <span style="font-size:0.9rem;color:var(--muted)">$=[u(x_1),\ldots,u(x_m)]$</span>
+          </div>
+          <div class="arrow">+</div>
+          <div class="box">
+            <div class="small">Trunk 입력</div>
+            <strong>$y$</strong><br />
+            <span style="font-size:0.9rem;color:var(--muted)">평가하고 싶은 점</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="box">
+            <div class="small">출력</div>
+            <strong>$v(y)$</strong><br />
+            <span style="font-size:0.9rem;color:var(--muted)">$\approx G(u)(y)$</span>
+          </div>
+        </div>
+
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>기호</th>
+              <th>역할</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>$x$ (센서 좌표)</td>
+              <td>입력 함수 $u$를 샘플링하는 위치들</td>
+            </tr>
+            <tr>
+              <td>$y$ (쿼리 좌표)</td>
+              <td>출력 $v$를 알고 싶은 위치</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>숫자 예시</h3>
+        <p>$u(x)=2x$, 센서 $x=0,\,0.5,\,1$ 이면</p>
+        \[
+          [u(0),\,u(0.5),\,u(1)] = [0,\,1,\,2]
+        \]
+        <p>Trunk에 $y=0.7$을 넣으면</p>
+        \[
+          v(0.7)=\int_0^{0.7} 2s\,ds = (0.7)^2 = 0.49
+        \]
+        <p>
+          같은 $u$에 $y$만 바꿔 여러 번 평가하면 함수 $v$의 여러 점을 얻을 수 있습니다.
+        </p>
+
+        <h3>일반 NN과의 차이</h3>
+        <ul class="clean">
+          <li><strong>일반 회귀:</strong> 하나의 고정된 $u$에 대해 $x\mapsto v(x)$만 배움</li>
+          <li><strong>DeepONet:</strong> 여러 $u$에 대해 연산자 $u\mapsto v$ 전체를 배움 (새 $u$에도 바로 $v(y)$ 예측)</li>
+        </ul>
+      </section>
+
+      <section id="notation">
+        <h2>5. 왜 $v(y)$를 $G(u)(y)$라고 쓰나?</h2>
+        <p>
+          $G(u(x), y)$가 더 직관적으로 보일 수 있지만,
+          수학적으로 정확한 쪽은 $G(u)(y)$입니다.
+        </p>
+
+        <h3>두 단계로 읽기</h3>
+        <div class="panel">
+          <div class="caption">1단계 — 연산자 적용</div>
+          \[
+            G(u)=v \quad \text{(함수 → 함수)}
+          \]
+          <p style="margin:0; color: var(--muted); font-size: 0.92rem;">
+            아직 점 $y$는 등장하지 않습니다.
+          </p>
+        </div>
+        <div class="panel">
+          <div class="caption">2단계 — 점 평가</div>
+          \[
+            G(u)(y)=v(y)
+          \]
+        </div>
+
+        <p>
+          표기 $u(x)$는 보통 “한 점에서의 값”처럼 보이므로,
+          $G(u(x), y)$는 함수 전체를 넣는지 한 값을 넣는지 모호합니다.
+        </p>
+
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>표기</th>
+              <th>관점</th>
+              <th>비고</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>$G(u)(y)$</td>
+              <td>수학 (연산자)</td>
+              <td>권장. 의미가 단계적으로 분명함</td>
+            </tr>
+            <tr>
+              <td>$G(u(x), y)$</td>
+              <td>직관</td>
+              <td>$u(x)$가 모호해서 덜 씀</td>
+            </tr>
+            <tr>
+              <td>$\hat{G}([u(x_i)], y)$</td>
+              <td>구현/네트워크</td>
+              <td>실제로 넣는 입력 형태</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="hat">
+        <h2>6. $\hat{G}([u(x_i)], y)$ 기호 풀이</h2>
+        <p>
+          이 표기는 진짜 연산자 $G$가 아니라,
+          컴퓨터/신경망이 계산하는 <strong>근사 함수</strong>를 가리킵니다.
+        </p>
+
+        <div class="panel">
+          <div class="caption">$\hat{G}$ (G-hat)</div>
+          <p>
+            모자($\,\hat{\,}\,$)는 <strong>근사</strong>를 뜻합니다.
+            진짜 적분 연산자는 $G$, DeepONet이 학습한 네트워크는 $\hat{G}$입니다.
+          </p>
+          \[
+            \hat{G}(\cdot)\approx G(\cdot)
+          \]
+        </div>
+
+        <div class="panel">
+          <div class="caption">$[u(x_i)]=[u(x_1),\ldots,u(x_m)]$</div>
+          <p>
+            연속 함수 $u$ 전체를 그대로 넣을 수 없어서,
+            고정 센서점에서의 값 벡터로 대신 넣습니다. (Branch 입력)
+          </p>
+          <p style="margin:0; color: var(--muted); font-size: 0.92rem;">
+            예: $x_i=0,0.5,1$이고 $u(x)=2x$이면 $[0,1,2]$
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="caption">$y$</div>
+          <p style="margin:0">
+            출력 $v$를 평가하고 싶은 위치입니다. (Trunk 입력)
+            네트워크 출력은 그 점에서의 스칼라 값입니다.
+          </p>
+        </div>
+
+        <div class="panel accent">
+          <div class="caption">연결</div>
+          \[
+            \hat{G}\big([u(x_i)],\, y\big) \approx G(u)(y) = v(y)
+          \]
+        </div>
+      </section>
+
+      <section id="summary">
+        <h2>7. 한눈에 정리</h2>
+        <ol class="steps">
+          <li>ODE $\frac{dv}{dx}=u(x),\;v(0)=0$의 해는 $v(x)=\displaystyle\int_0^x u(s)\,ds$</li>
+          <li>$s$는 적분용 더미 변수일 뿐, 법칙은 그대로</li>
+          <li>DeepONet은 이 적분 연산자 $G:u\mapsto v$를 학습</li>
+          <li>데이터: 입력 $(u\text{의 샘플},\,y)$ → 출력 $v(y)$</li>
+          <li>수학 표기 $G(u)(y)$, 구현 표기 $\hat{G}([u(x_i)], y)$</li>
+        </ol>
+      </section>
+
+      <footer>
+        대화 기반 학습 노트 · KaTeX로 수식 렌더링 ·
+        파일: <span class="mono">index.html</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
