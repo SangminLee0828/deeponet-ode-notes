@@ -34,6 +34,26 @@
       --max: 42rem;
     }
 
+    figure.diagram {
+      margin: 1.25rem 0 1.5rem;
+      padding: 0;
+    }
+
+    figure.diagram img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    figure.diagram figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
     * { box-sizing: border-box; }
 
     html { scroll-behavior: smooth; }
@@ -299,7 +319,10 @@
       <a href="#deeponet">4. DeepONet 적용</a>
       <a href="#notation">5. $G(u)(y)$ 표기</a>
       <a href="#hat">6. $\hat{G}$ 표기</a>
-      <a href="#summary">7. 한눈에 정리</a>
+      <a href="#formula">7. DeepONet 근사식과 $b_0$</a>
+      <a href="#fnn">8. Branch·Trunk를 FNN으로 전개</a>
+      <a href="#batch">9. 학습 배치 텐서 예제</a>
+      <a href="#summary">10. 한눈에 정리</a>
     </nav>
 
     <main>
@@ -590,14 +613,612 @@
         </div>
       </section>
 
+      <section id="formula">
+        <h2>7. DeepONet 근사식과 bias $b_0$</h2>
+
+        <p>교재/슬라이드에서 자주 보는 완전한 형태는 다음과 같습니다.</p>
+        <div class="panel accent">
+          <div class="caption">완전한 DeepONet 출력</div>
+          \[
+            G(u)(y)
+            \approx
+            \sum_{k=1}^{p}
+            b_k\!\big(u(x_1),u(x_2),\ldots,u(x_m)\big)\,
+            t_k(y)
+            \;+\;
+            b_0
+          \]
+        </div>
+
+        <p>앞에서 간단히 쓴 식은 bias를 생략한 버전입니다.</p>
+        <div class="panel">
+          <div class="caption">짧은 표기 (bias 생략)</div>
+          \[
+            G(u)(y)\approx\sum_{k=1}^{p} b_k(u)\, t_k(y)
+          \]
+        </div>
+
+        <h3>각 기호가 하는 일</h3>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>기호</th>
+              <th>역할</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>$b_k(u(x_1),\ldots,u(x_m))$</td>
+              <td>
+                <strong>Branch net</strong>의 $k$번째 출력.
+                입력 함수를 센서점 $m$개에서 샘플한 벡터를 받아
+                “이 함수 $u$의 계수”를 만듦
+              </td>
+            </tr>
+            <tr>
+              <td>$t_k(y)$</td>
+              <td>
+                <strong>Trunk net</strong>의 $k$번째 출력.
+                평가 위치 $y$만 보고 “그 위치의 기저 함수값”을 만듦
+              </td>
+            </tr>
+            <tr>
+              <td>$\sum_{k=1}^{p} b_k\, t_k$</td>
+              <td>
+                계수와 기저의 내적.
+                $u$에 따라 달라지는 부분 + $y$에 따라 달라지는 부분을 합쳐
+                $v(y)$를 근사
+              </td>
+            </tr>
+            <tr>
+              <td>$b_0$</td>
+              <td>
+                <strong>출력 bias</strong> (보통 학습 가능한 스칼라 상수).
+                $u$나 $y$에 직접 의존하지 않고 전체에 더해지는 상수항
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>$b_0$는 무엇인가?</h3>
+        <p>
+          일반 신경망의 bias와 같은 역할입니다.
+          예를 들어 선형층 $Wx+b$에서 $b$가 출력을 위아래로 옮기듯,
+          DeepONet에서도 합 $\sum b_k t_k$만으로는 맞추기 어려운
+          <strong>전체적인 상수 오프셋</strong>을 $b_0$가 담당합니다.
+        </p>
+        <ul class="clean">
+          <li>$b_0$는 보통 <strong>숫자 하나</strong> (스칼라)</li>
+          <li>Branch/Trunk 입력과 무관하게 <strong>항상 더해짐</strong></li>
+          <li>학습 중 gradient로 함께 업데이트되는 <strong>trainable parameter</strong></li>
+        </ul>
+
+        <div class="panel">
+          <div class="caption">직관</div>
+          \[
+            \underbrace{\sum_{k=1}^{p} b_k(u)\,t_k(y)}_{\text{$u$와 $y$에 따라 변하는 부분}}
+            \;+\;
+            \underbrace{b_0}_{\text{전체를 위아래로 평행이동}}
+          \]
+        </div>
+
+        <h3>없어도 되는가?</h3>
+        <div class="panel warn">
+          <p style="margin:0 0 0.75rem">
+            <strong>이론적으로는</strong> $b_0$ 없이도 근사할 수 있는 경우가 많습니다.
+            Trunk가 거의 상수인 성분 $t_j(y)\approx c$를 만들고,
+            Branch가 그에 맞는 계수 $b_j(u)$를 학습하면
+            사실상 상수항을 흉내 낼 수 있기 때문입니다.
+          </p>
+          <p style="margin:0">
+            <strong>실용적으로는</strong> $b_0$를 넣는 편이 거의 항상 낫습니다.
+            상수 오프셋을 명시적으로 두면 학습이 쉽고, 원 논문·대부분 구현도
+            출력에 bias를 둡니다. 그래서 제가 처음에 쓴 짧은 식은
+            “구조의 핵심(branch·trunk 내적)”만 강조한 것이고,
+            완전한 식에는 $b_0$가 있는 것이 맞습니다.
+          </p>
+        </div>
+
+        <h3>적분 문제에 대입하면</h3>
+        <p>목표 연산자가 $G(u)(y)=\displaystyle\int_0^y u(s)\,ds$일 때,</p>
+        \[
+          \hat{G}(u)(y)
+          =
+          \sum_{k=1}^{p}
+          b_k\!\big([u(x_i)]_{i=1}^{m}\big)\,
+          t_k(y)
+          + b_0
+          \;\approx\;
+          \int_0^y u(s)\,ds
+        \]
+        <p>
+          여기서 $b_0$는 “모든 $u$, 모든 $y$에 공통으로 더해지는 상수”라서,
+          예를 들어 데이터 전체의 평균 오프셋을 맞추는 데 쓰입니다.
+          $y=0$에서 $v(0)=0$이어야 하는 문제라면,
+          네트워크가 $b_0$와 $\sum b_k t_k(0)$이 함께 $0$ 근처가 되도록
+          학습하게 됩니다. (physics constraint를 loss에 넣을 수도 있음)
+        </p>
+
+        <h3>정리</h3>
+        <ul class="clean">
+          <li>짧은 식 $\sum b_k t_k$ : DeepONet의 <strong>본체</strong></li>
+          <li>$+\,b_0$ : 학습을 돕는 <strong>출력 bias</strong></li>
+          <li>없어도 근사는 가능하지만, <strong>있는 쪽이 표준</strong></li>
+        </ul>
+      </section>
+
+      <section id="fnn">
+        <h2>8. Branch·Trunk를 FNN으로 완전히 전개</h2>
+
+        <p>
+          Branch와 Trunk를 둘 다 평범한 완전연결망(FNN)으로 보고,
+          아주 작은 크기로 수식을 끝까지 풀어 씁니다.
+        </p>
+
+        <div class="panel accent">
+          <div class="caption">이번 예시의 가정</div>
+          <ul class="clean" style="margin-bottom:0">
+            <li><strong>Branch:</strong> $3 \times 4 \times 4$ &nbsp;(입력 3 → 은닉 4 → 출력 4)</li>
+            <li><strong>Trunk:</strong> $1 \times 4 \times 4$ &nbsp;(입력 1 → 은닉 4 → 출력 4)</li>
+            <li>따라서 latent 차원 $p=4$, 센서 개수 $m=3$</li>
+            <li>활성화 $\sigma$는 은닉층에만 사용 (예: $\tanh$ 또는 ReLU), 출력층은 선형</li>
+          </ul>
+        </div>
+
+        <figure class="diagram">
+          <img src="assets/deeponet-branch-trunk-diagram.png"
+               alt="DeepONet: Branch 3x4x4 and Trunk 1x4x4 combine by dot product plus bias" />
+          <figcaption>
+            그림. Branch가 함수 $u$의 계수 $\mathbf{b}$를, Trunk가 위치 $y$의 기저 $\mathbf{t}$를 만들고,
+            내적 후 bias $b_0$를 더해 $G(u)(y)$를 근사한다.
+          </figcaption>
+        </figure>
+
+        <h3>8.1 입력</h3>
+        <p>센서 위치 $x_1,x_2,x_3$에서 입력 함수를 샘플합니다.</p>
+        \[
+          \mathbf{u}
+          =
+          \begin{bmatrix}
+            u(x_1)\\ u(x_2)\\ u(x_3)
+          \end{bmatrix}
+          \in \mathbb{R}^3,
+          \qquad
+          y\in\mathbb{R}
+        \]
+
+        <h3>8.2 Branch Net ($3\times 4\times 4$)</h3>
+        <p>가중치·bias를 모두 명시하면 다음과 같습니다.</p>
+
+        <div class="panel">
+          <div class="caption">1층 (은닉): $\mathbb{R}^3\to\mathbb{R}^4$</div>
+          \[
+            W^{(b1)}\in\mathbb{R}^{4\times 3},
+            \quad
+            \mathbf{c}^{(b1)}\in\mathbb{R}^{4}
+          \]
+          \[
+            \mathbf{h}^{(b)}
+            =
+            \sigma\!\Big(
+              W^{(b1)}\mathbf{u}+\mathbf{c}^{(b1)}
+            \Big)
+            =
+            \sigma\!\left(
+              \begin{bmatrix}
+                W^{(b1)}_{11} & W^{(b1)}_{12} & W^{(b1)}_{13}\\
+                W^{(b1)}_{21} & W^{(b1)}_{22} & W^{(b1)}_{23}\\
+                W^{(b1)}_{31} & W^{(b1)}_{32} & W^{(b1)}_{33}\\
+                W^{(b1)}_{41} & W^{(b1)}_{42} & W^{(b1)}_{43}
+              \end{bmatrix}
+              \begin{bmatrix}
+                u(x_1)\\ u(x_2)\\ u(x_3)
+              \end{bmatrix}
+              +
+              \begin{bmatrix}
+                c^{(b1)}_1\\ c^{(b1)}_2\\ c^{(b1)}_3\\ c^{(b1)}_4
+              \end{bmatrix}
+            \right)
+          \]
+          <p style="margin:0.5rem 0 0; color:var(--muted); font-size:0.92rem;">
+            성분별로 쓰면
+            $h^{(b)}_i=\sigma\!\big(W^{(b1)}_{i1}u(x_1)+W^{(b1)}_{i2}u(x_2)+W^{(b1)}_{i3}u(x_3)+c^{(b1)}_i\big)$,
+            $i=1,2,3,4$.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="caption">2층 (출력 / branch feature): $\mathbb{R}^4\to\mathbb{R}^4$</div>
+          \[
+            W^{(b2)}\in\mathbb{R}^{4\times 4},
+            \quad
+            \mathbf{c}^{(b2)}\in\mathbb{R}^{4}
+          \]
+          \[
+            \mathbf{b}
+            =
+            W^{(b2)}\mathbf{h}^{(b)}+\mathbf{c}^{(b2)}
+            =
+            \begin{bmatrix}
+              b_1\\ b_2\\ b_3\\ b_4
+            \end{bmatrix}
+          \]
+          <p style="margin:0.5rem 0 0; color:var(--muted); font-size:0.92rem;">
+            즉
+            $b_k=\sum_{i=1}^{4} W^{(b2)}_{ki}\, h^{(b)}_i + c^{(b2)}_k$,
+            $k=1,2,3,4$.
+            이 $\mathbf{b}$가 앞에서 말한 $b_k(u(x_1),\ldots,u(x_m))$ 벡터입니다.
+          </p>
+        </div>
+
+        <h3>8.3 Trunk Net ($1\times 4\times 4$)</h3>
+        <div class="panel">
+          <div class="caption">1층 (은닉): $\mathbb{R}^1\to\mathbb{R}^4$</div>
+          \[
+            W^{(t1)}\in\mathbb{R}^{4\times 1},
+            \quad
+            \mathbf{c}^{(t1)}\in\mathbb{R}^{4}
+          \]
+          \[
+            \mathbf{h}^{(t)}
+            =
+            \sigma\!\Big(
+              W^{(t1)} y + \mathbf{c}^{(t1)}
+            \Big)
+          \]
+          <p style="margin:0.5rem 0 0; color:var(--muted); font-size:0.92rem;">
+            성분별:
+            $h^{(t)}_j=\sigma\!\big(W^{(t1)}_{j1}\, y + c^{(t1)}_j\big)$,
+            $j=1,2,3,4$.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="caption">2층 (출력 / trunk feature): $\mathbb{R}^4\to\mathbb{R}^4$</div>
+          \[
+            W^{(t2)}\in\mathbb{R}^{4\times 4},
+            \quad
+            \mathbf{c}^{(t2)}\in\mathbb{R}^{4}
+          \]
+          \[
+            \mathbf{t}
+            =
+            W^{(t2)}\mathbf{h}^{(t)}+\mathbf{c}^{(t2)}
+            =
+            \begin{bmatrix}
+              t_1\\ t_2\\ t_3\\ t_4
+            \end{bmatrix}
+          \]
+          <p style="margin:0.5rem 0 0; color:var(--muted); font-size:0.92rem;">
+            $t_k=\sum_{j=1}^{4} W^{(t2)}_{kj}\, h^{(t)}_j + c^{(t2)}_k$.
+            이 $\mathbf{t}$가 $t_k(y)$ 벡터입니다.
+          </p>
+        </div>
+
+        <h3>8.4 최종 결합</h3>
+        <div class="panel accent">
+          <div class="caption">DeepONet 출력 (완전히 명시)</div>
+          \[
+            \hat{G}(u)(y)
+            =
+            \sum_{k=1}^{4} b_k\, t_k + b_0
+            =
+            \mathbf{b}^{\mathsf{T}}\mathbf{t}+b_0
+          \]
+          \[
+            =
+            b_1 t_1 + b_2 t_2 + b_3 t_3 + b_4 t_4 + b_0
+          \]
+        </div>
+        <p>
+          한 줄로 합치면 “Branch FNN의 출력 벡터”와 “Trunk FNN의 출력 벡터”의
+          내적에 스칼라 bias를 더한 것이 DeepONet입니다.
+        </p>
+
+        <h3>8.5 숫자로 한 번 통과시켜 보기</h3>
+        <p>
+          이해를 위해 활성화는 $\sigma(z)=\mathrm{ReLU}(z)=\max(z,0)$로 두고,
+          아주 단순한 가중치를 가정합니다. (실제 학습값이 아니라 계산 연습용)
+        </p>
+
+        <div class="panel">
+          <div class="caption">예시 입력</div>
+          <p style="margin:0 0 0.5rem">
+            $u(x)=2x$, 센서 $x_1=0,\;x_2=0.5,\;x_3=1$, 쿼리 $y=0.7$
+          </p>
+          \[
+            \mathbf{u}
+            =
+            \begin{bmatrix} 0\\ 1\\ 2 \end{bmatrix},
+            \qquad
+            y=0.7
+          \]
+          <p style="margin:0; color:var(--muted); font-size:0.92rem;">
+            참값: $v(0.7)=\displaystyle\int_0^{0.7}2s\,ds=0.49$
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="caption">예시 가중치 (장난감)</div>
+          \[
+            W^{(b1)}
+            =
+            \begin{bmatrix}
+              1&0&0\\
+              0&1&0\\
+              0&0&1\\
+              1&1&1
+            \end{bmatrix},
+            \;
+            \mathbf{c}^{(b1)}=\mathbf{0},
+            \;
+            W^{(b2)}=I_4,
+            \;
+            \mathbf{c}^{(b2)}=\mathbf{0}
+          \]
+          \[
+            W^{(t1)}
+            =
+            \begin{bmatrix}1\\1\\1\\1\end{bmatrix},
+            \;
+            \mathbf{c}^{(t1)}=\mathbf{0},
+            \;
+            W^{(t2)}=I_4,
+            \;
+            \mathbf{c}^{(t2)}=\mathbf{0},
+            \;
+            b_0=0
+          \]
+        </div>
+
+        <p><strong>Branch 전개</strong></p>
+        \[
+          W^{(b1)}\mathbf{u}
+          =
+          \begin{bmatrix}0\\1\\2\\3\end{bmatrix}
+          \Rightarrow
+          \mathbf{h}^{(b)}
+          =
+          \mathrm{ReLU}\!\big([0,1,2,3]^{\mathsf{T}}\big)
+          =
+          \begin{bmatrix}0\\1\\2\\3\end{bmatrix}
+          \Rightarrow
+          \mathbf{b}
+          =
+          \begin{bmatrix}0\\1\\2\\3\end{bmatrix}
+        \]
+
+        <p><strong>Trunk 전개</strong></p>
+        \[
+          W^{(t1)}y
+          =
+          \begin{bmatrix}0.7\\0.7\\0.7\\0.7\end{bmatrix}
+          \Rightarrow
+          \mathbf{h}^{(t)}
+          =
+          \begin{bmatrix}0.7\\0.7\\0.7\\0.7\end{bmatrix}
+          \Rightarrow
+          \mathbf{t}
+          =
+          \begin{bmatrix}0.7\\0.7\\0.7\\0.7\end{bmatrix}
+        \]
+
+        <p><strong>결합</strong></p>
+        \[
+          \hat{G}(u)(0.7)
+          =
+          0\cdot 0.7 + 1\cdot 0.7 + 2\cdot 0.7 + 3\cdot 0.7 + 0
+          =
+          4.2
+        \]
+        <p>
+          참값 $0.49$와는 전혀 다릅니다. 당연합니다 — 가중치를 임의로 둔
+          <em>한 번의 forward</em>일 뿐이기 때문입니다. 학습이란 바로 이
+          $W^{(\cdot)},\mathbf{c}^{(\cdot)},b_0$를 바꿔서
+          많은 $(u,y)$ 쌍에 대해 $\hat{G}(u)(y)\approx v(y)$가 되게 만드는 과정입니다.
+        </p>
+
+        <h3>8.6 파라미터 개수 (이 작은 예시)</h3>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>부분</th>
+              <th>개수</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Branch $W^{(b1)},\mathbf{c}^{(b1)}$</td>
+              <td>$4\cdot 3 + 4 = 16$</td>
+            </tr>
+            <tr>
+              <td>Branch $W^{(b2)},\mathbf{c}^{(b2)}$</td>
+              <td>$4\cdot 4 + 4 = 20$</td>
+            </tr>
+            <tr>
+              <td>Trunk $W^{(t1)},\mathbf{c}^{(t1)}$</td>
+              <td>$4\cdot 1 + 4 = 8$</td>
+            </tr>
+            <tr>
+              <td>Trunk $W^{(t2)},\mathbf{c}^{(t2)}$</td>
+              <td>$4\cdot 4 + 4 = 20$</td>
+            </tr>
+            <tr>
+              <td>출력 bias $b_0$</td>
+              <td>$1$</td>
+            </tr>
+            <tr>
+              <td><strong>합계</strong></td>
+              <td><strong>65</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="batch">
+        <h2>9. 학습 배치 텐서 예제</h2>
+
+        <p>
+          앞 장의 “한 함수·한 점” forward와 달리, 실제 학습에서는
+          여러 함수와 여러 평가점을 <strong>한 번에</strong> 넣습니다.
+        </p>
+
+        <div class="panel accent">
+          <div class="caption">텐서 shape</div>
+          <table class="compare" style="margin:0; border:none">
+            <thead>
+              <tr>
+                <th>텐서</th>
+                <th>Shape</th>
+                <th>의미</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Branch 입력</td>
+                <td>$N\times m = 150\times 100$</td>
+                <td>함수(샘플) $N=150$개, 센서 $m=100$개</td>
+              </tr>
+              <tr>
+                <td>Trunk 입력</td>
+                <td>$100\times 1$</td>
+                <td>평가 위치 $y$가 100개 ($y\in\mathbb{R}$)</td>
+              </tr>
+              <tr>
+                <td>Output</td>
+                <td>$150\times 100$</td>
+                <td>$G(u^{(i)})(y_j)$를 모두 모은 행렬</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>9.1 $N=150$은 무엇인가?</h3>
+        <p>
+          여기서 $N$은 <strong>training data 개수</strong>입니다.
+          즉 서로 다른 입력 함수
+        </p>
+        \[
+          u^{(1)},\; u^{(2)},\; \ldots,\; u^{(150)}
+        \]
+        <p style="margin-top:0.5rem">
+          가 150개 있다는 뜻입니다. (2D 이미지 한 장이 아니라, 함수 샘플 150개)
+        </p>
+
+        <h3>9.2 Branch의 100과 Trunk의 100</h3>
+        <p>
+          이론상 두 개의 100은 <strong>같을 필요가 없습니다</strong>.
+        </p>
+        <ul class="clean">
+          <li>Branch의 100: 입력 함수를 샘플하는 <strong>센서 좌표</strong></li>
+          <li>Trunk의 100: 출력을 읽고 싶은 <strong>쿼리 좌표</strong></li>
+        </ul>
+        <p>
+          이 예제에서는 둘 다 같은 좌표
+          \(x\in\{1,2,\ldots,100\}\)으로 맞췄습니다.
+        </p>
+        <div class="panel">
+          <div class="caption">같은 격자 사용</div>
+          \[
+            \underbrace{x_1,\ldots,x_{100}}_{\text{Branch 센서}}
+            =
+            \underbrace{y_1,\ldots,y_{100}}_{\text{Trunk 쿼리}}
+            =
+            1,2,\ldots,100
+          \]
+          <p style="margin:0.5rem 0 0; color:var(--muted); font-size:0.92rem;">
+            따라서 알고 싶은 것은 각 함수 $u^{(i)}$에 대해
+            $G(u^{(i)})$를 같은 점 $1,\ldots,100$에서 평가한 값입니다.
+          </p>
+        </div>
+
+        <h3>9.3 Output이 $150\times 100$인 이유</h3>
+        \[
+          \text{Output}_{ij}
+          \approx
+          G\!\big(u^{(i)}\big)(x_j),
+          \qquad
+          i=1,\ldots,150,\;
+          j=1,\ldots,100
+        \]
+        <p>
+          샘플마다·점마다 스칼라를 하나씩 돌리는 대신,
+          행렬 한 장으로 모아 GPU/프레임워크가
+          <strong>배치 연산(batched computation)</strong>으로 빠르게 계산하기 위함입니다.
+        </p>
+        <ul class="clean">
+          <li>$N=150$이 전체 데이터면 → <strong>풀 배치(full batch)</strong></li>
+          <li>전체 중 일부만 떼서 넣으면 → <strong>미니배치(mini-batch)</strong></li>
+        </ul>
+
+        <h3>9.4 네트워크 안에서의 흐름</h3>
+        <div class="panel">
+          \[
+            \underbrace{150\times 100}_{\text{Branch in}}
+            \xrightarrow{\text{Branch FNN}}
+            \underbrace{150\times p}_{B}
+            ,\qquad
+            \underbrace{100\times 1}_{\text{Trunk in}}
+            \xrightarrow{\text{Trunk FNN}}
+            \underbrace{100\times p}_{T}
+          \]
+          \[
+            \text{Output}
+            =
+            B T^{\mathsf{T}} + b_0
+            \in \mathbb{R}^{150\times 100}
+          \]
+        </div>
+        <p>
+          8장의 스칼라 식 $\mathbf{b}^{\mathsf{T}}\mathbf{t}+b_0$를
+          함수 축·점 축으로 쌓아 행렬 곱으로 쓴 형태입니다.
+        </p>
+
+        <h3>9.5 작은 예제와의 차이</h3>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th></th>
+              <th>8장 (작은 예제)</th>
+              <th>9장 (배치 예제)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>함수 수</td>
+              <td>1개</td>
+              <td>$N=150$</td>
+            </tr>
+            <tr>
+              <td>센서/쿼리</td>
+              <td>$m=3$, $y$ 1개</td>
+              <td>$m=100$, $y$ 100개 (같은 격자)</td>
+            </tr>
+            <tr>
+              <td>출력</td>
+              <td>스칼라 $v(y)$</td>
+              <td>행렬 $150\times 100$</td>
+            </tr>
+            <tr>
+              <td>목적</td>
+              <td>수식 전개</td>
+              <td>학습 시 배치 텐서</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <section id="summary">
-        <h2>7. 한눈에 정리</h2>
+        <h2>10. 한눈에 정리</h2>
         <ol class="steps">
           <li>ODE $\frac{dv}{dx}=u(x),\;v(0)=0$의 해는 $v(x)=\displaystyle\int_0^x u(s)\,ds$</li>
-          <li>$s$는 적분용 더미 변수일 뿐, 법칙은 그대로</li>
+          <li>$s$는 적분용 더미 변수일 뿐, 규칙은 그대로</li>
           <li>DeepONet은 이 적분 연산자 $G:u\mapsto v$를 학습</li>
           <li>데이터: 입력 $(u\text{의 샘플},\,y)$ → 출력 $v(y)$</li>
           <li>수학 표기 $G(u)(y)$, 구현 표기 $\hat{G}([u(x_i)], y)$</li>
+          <li>완전한 출력: $\sum_{k=1}^{p} b_k([u(x_i)])\,t_k(y)+b_0$</li>
+          <li>Branch·Trunk는 각각 FNN이고, 마지막에 내적(+bias)으로 결합</li>
+          <li>학습 시에는 $N$개 함수 × 여러 $y$를 배치 행렬로 한 번에 계산</li>
         </ol>
       </section>
 
