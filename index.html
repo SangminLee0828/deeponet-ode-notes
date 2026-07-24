@@ -322,7 +322,8 @@
       <a href="#formula">7. DeepONet 근사식과 $b_0$</a>
       <a href="#fnn">8. Branch·Trunk를 FNN으로 전개</a>
       <a href="#batch">9. 학습 배치 텐서 예제</a>
-      <a href="#summary">10. 한눈에 정리</a>
+      <a href="#deeponet2d">10. 2D DeepONet 예제</a>
+      <a href="#summary">11. 한눈에 정리</a>
     </nav>
 
     <main>
@@ -1208,8 +1209,154 @@
         </table>
       </section>
 
+      <section id="deeponet2d">
+        <h2>10. 2D DeepONet 예제</h2>
+
+        <p>
+          1D 적분 연산자 예제와 달리, 여기서는 <strong>2D 장 → 2D 장</strong>을
+          DeepONet으로 근사합니다.
+        </p>
+
+        <div class="panel accent">
+          <div class="caption">문제 설정</div>
+          <ul class="clean" style="margin-bottom:0">
+            <li>
+              <strong>입력 \(u\):</strong>
+              \(81\times 21\) displacement 측정장
+              (가로 81, 세로 21 픽셀)
+            </li>
+            <li>
+              <strong>출력 \(G(u)\):</strong>
+              같은 크기 \(81\times 21\) material property map
+              (Young’s modulus 또는 damage map)
+            </li>
+          </ul>
+        </div>
+
+        <figure class="diagram">
+          <img src="assets/deeponet-2d-architecture.png"
+               alt="2D DeepONet: Branch CNN on displacement, Trunk on coordinates, dot product to property map" />
+          <figcaption>
+            그림. Branch는 displacement 장 \(u\)를, Trunk는 좌표 정보를 인코딩한 뒤
+            내적하여 \(81\times 21\) property map을 만든다.
+          </figcaption>
+        </figure>
+
+        <h3>10.1 Branch</h3>
+        <p>
+          Branch 입력은 2D displacement 이미지 \(u\in\mathbb{R}^{81\times 21}\)입니다.
+          CNN(Conv2D + ReLU + MaxPool) → Flatten → Dense로
+          계수 벡터 \(\mathbf{b}=[b_1,\ldots,b_p]^{\mathsf{T}}\)를 만듭니다.
+        </p>
+
+        <h3>10.2 Trunk 입력 shape</h3>
+        <p>
+          Trunk는 “좌표 격자 이미지”를 CNN에 넣는 방식이 아니라,
+          각 격자점의 \((x,y)\) 좌표 쌍을 모아 넣는 형태가 자연스럽습니다.
+          실제 텐서 예:
+        </p>
+        <div class="panel">
+          <div class="caption">Trunk input</div>
+          \[
+            (200,\; 81\times 21,\; 2)
+            =
+            (200,\; 1701,\; 2)
+          \]
+          <table class="compare" style="margin:0.75rem 0 0; border:none">
+            <thead>
+              <tr>
+                <th>축</th>
+                <th>크기</th>
+                <th>의미</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>0</td>
+                <td>$200$</td>
+                <td>배치 크기 $N$</td>
+              </tr>
+              <tr>
+                <td>1</td>
+                <td>$81\times 21=1701$</td>
+                <td>격자점을 1열로 펼친 쿼리 점 개수</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>$2$</td>
+                <td>각 점의 $(x,y)$ 좌표 쌍</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>10.3 작은 격자로 보면</h3>
+        <p>
+          shape가 \(N,\;3\times 2,\;2\)이면 점 6개가 예를 들어 다음 순서로 들어갑니다.
+        </p>
+        \[
+          (1,1),\;
+          (1,2),\;
+          (2,1),\;
+          (2,2),\;
+          (3,1),\;
+          (3,2)
+        \]
+        <p>
+          각 원소는 길이 2인 좌표 벡터이고, Trunk는 점마다 기저
+          \(t_k(x,y)\)를 만들어 \(\mathbf{t}\in\mathbb{R}^{p}\)
+          (또는 배치·점 축을 포함한 텐서)를 출력합니다.
+        </p>
+
+        <h3>10.4 결합과 출력</h3>
+        <div class="panel accent">
+          \[
+            G(u)(x,y)
+            \approx
+            \sum_{k=1}^{p} b_k(u)\, t_k(x,y) + b_0
+          \]
+        </div>
+        <p>
+          모든 격자점 \((x,y)\)에 대해 위 값을 구한 뒤
+          \(81\times 21\)로 reshape하면 material property map이 됩니다.
+        </p>
+
+        <h3>10.5 9장 1D 배치 예제와의 차이</h3>
+        <table class="compare">
+          <thead>
+            <tr>
+              <th></th>
+              <th>9장 (1D 배치)</th>
+              <th>10장 (2D 장)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>입력 $u$</td>
+              <td>1D 함수의 센서 벡터</td>
+              <td>$81\times 21$ displacement 장</td>
+            </tr>
+            <tr>
+              <td>Branch</td>
+              <td>FNN</td>
+              <td>CNN (+ Dense)</td>
+            </tr>
+            <tr>
+              <td>Trunk 입력</td>
+              <td>$y\in\mathbb{R}$ (또는 $m\times 1$)</td>
+              <td>$(N,\;81\cdot 21,\;2)$ 좌표 쌍</td>
+            </tr>
+            <tr>
+              <td>출력</td>
+              <td>$N\times m$ (점별 스칼라 행렬)</td>
+              <td>$81\times 21$ property map (배치면 $N\times 81\times 21$)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <section id="summary">
-        <h2>10. 한눈에 정리</h2>
+        <h2>11. 한눈에 정리</h2>
         <ol class="steps">
           <li>ODE $\frac{dv}{dx}=u(x),\;v(0)=0$의 해는 $v(x)=\displaystyle\int_0^x u(s)\,ds$</li>
           <li>$s$는 적분용 더미 변수일 뿐, 규칙은 그대로</li>
@@ -1219,6 +1366,7 @@
           <li>완전한 출력: $\sum_{k=1}^{p} b_k([u(x_i)])\,t_k(y)+b_0$</li>
           <li>Branch·Trunk는 각각 FNN이고, 마지막에 내적(+bias)으로 결합</li>
           <li>학습 시에는 $N$개 함수 × 여러 $y$를 배치 행렬로 한 번에 계산</li>
+          <li>2D 예제: displacement 장 → property map, Trunk는 $(N, n_{\mathrm{pts}}, 2)$ 좌표 입력</li>
         </ol>
       </section>
 
